@@ -38,6 +38,8 @@ export const LibraryPage: React.FC = () => {
     addTrackToPlaylist,
     updateTrackCover,
     loadDemoLibrary,
+    personalization,
+    updatePersonalization,
   } = useMusic();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -121,7 +123,34 @@ export const LibraryPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1 bg-white/[0.06] border border-white/10 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => updatePersonalization({ importMode: 'lean' })}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                (personalization.importMode || 'lean') === 'lean'
+                  ? 'bg-white/16 text-white'
+                  : 'text-white/60 hover:text-white'
+              }`}
+              title="仅导入音源与专辑封面，不自动导入外部或内嵌歌词"
+            >
+              精简导入 (推荐)
+            </button>
+            <button
+              type="button"
+              onClick={() => updatePersonalization({ importMode: 'full' })}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                personalization.importMode === 'full'
+                  ? 'bg-white/16 text-white'
+                  : 'text-white/60 hover:text-white'
+              }`}
+              title="完整导入，包含音频、封面及内嵌歌词"
+            >
+              完整导入
+            </button>
+          </div>
+
           {tracks.length === 0 && (
             <button
               type="button"
@@ -129,7 +158,7 @@ export const LibraryPage: React.FC = () => {
               className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/16 border border-white/15 text-xs font-medium text-white flex items-center gap-2 transition-colors cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              加载内置 WAV 示例
+              加载内置示例
             </button>
           )}
           <button

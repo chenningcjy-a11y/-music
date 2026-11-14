@@ -64,7 +64,10 @@ function probeDurationViaAudioElement(file: Blob): Promise<number> {
   });
 }
 
-export async function parseAudioFileToTrack(file: File): Promise<TrackMetadata> {
+export async function parseAudioFileToTrack(
+  file: File,
+  importMode: 'lean' | 'full' = 'lean'
+): Promise<TrackMetadata> {
   const fallback = parseFilenameFallback(file.name);
 
   let title = fallback.title;
@@ -119,7 +122,7 @@ export async function parseAudioFileToTrack(file: File): Promise<TrackMetadata> 
       }
     }
 
-    if (common.lyrics && common.lyrics.length > 0) {
+    if (importMode === 'full' && common.lyrics && common.lyrics.length > 0) {
       const firstLyric = common.lyrics[0] as unknown;
       if (typeof firstLyric === 'string') {
         embeddedLyrics = firstLyric;

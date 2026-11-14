@@ -616,7 +616,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           setImportProgress(`正在解析 ${i + 1}/${files.length}: ${file.name}`);
-          const track = await parseAudioFileToTrack(file);
+          const track = await parseAudioFileToTrack(
+            file,
+            personalization.importMode || 'lean'
+          );
           await saveTrackWithBlob(track, file);
           newlyAdded.push(track);
           importedCount++;

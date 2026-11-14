@@ -160,6 +160,9 @@ export interface PersonalizationSettings {
   showWordSync: boolean;
   showVinylParticles: boolean;
   showLiquidWave: boolean;
+  aiTranslationEngine?: string; // providerId or 'default'
+  aiTranslationModel?: string;
+  importMode?: 'lean' | 'full'; // 'lean' = 仅导入音源与封面 (精简导入)
 }
 
 export interface PlaybackPrefs {

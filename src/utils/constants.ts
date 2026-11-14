@@ -65,6 +65,9 @@ export const DEFAULT_PERSONALIZATION: PersonalizationSettings = {
   showWordSync: true,
   showVinylParticles: true,
   showLiquidWave: true,
+  aiTranslationEngine: 'default',
+  aiTranslationModel: '',
+  importMode: 'lean',
 };
 
 export const DEFAULT_PLAYBACK_PREFS: PlaybackPrefs = {
