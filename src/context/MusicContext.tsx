@@ -134,7 +134,10 @@ interface MusicContextValue {
   updateTrackLyrics: (id: string, lyricsRaw: string) => Promise<void>;
   translateTrackLyrics: (
     id: string,
-    targetLanguage?: LyricTargetLanguage
+    targetLanguage?: LyricTargetLanguage,
+    style?: string,
+    providerId?: string,
+    modelName?: string
   ) => Promise<void>;
   isTranslatingLyrics: boolean;
   updateLyricsOffset: (id: string, offsetMs: number) => Promise<void>;
@@ -721,7 +724,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const translateTrackLyrics = useCallback(
-    async (id: string, targetLanguage: LyricTargetLanguage = 'zh-CN') => {
+    async (
+      id: string,
+      targetLanguage: LyricTargetLanguage = 'zh-CN',
+      style: string = 'poetic',
+      providerId?: string,
+      modelName?: string
+    ) => {
       const target = tracks.find((t) => t.id === id);
       if (!target || !target.lyricsRaw) return;
       setIsTranslatingLyrics(true);
@@ -730,7 +739,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({
           target.lyricsRaw,
           target.title,
           target.artist,
-          targetLanguage
+          targetLanguage,
+          style,
+          providerId,
+          modelName
         );
         if (res.translatedCount > 0) {
           const updated = { ...target, lyricsRaw: res.bilingualLyrics };

@@ -7,6 +7,38 @@ export type LyricTranslationStyle =
   | 'literary'
   | 'bilingual';
 
+export const LYRIC_TRANSLATION_STYLES: {
+  id: LyricTranslationStyle;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: 'poetic',
+    label: '诗意翻译',
+    description: '具有诗歌般美感与韵律，自然优美保留核心情感',
+  },
+  {
+    id: 'natural',
+    label: '自然意译',
+    description: '符合中文日常表达习惯，通俗流畅亲切',
+  },
+  {
+    id: 'literal',
+    label: '忠实直译',
+    description: '尽可能忠实保持原文含义与句式结构对应',
+  },
+  {
+    id: 'literary',
+    label: '文学翻译',
+    description: '注重细腻情感、意境沉淀与文学修辞表现力',
+  },
+  {
+    id: 'bilingual',
+    label: '中英双语',
+    description: '原文与中文并列互衬，精炼点题',
+  },
+];
+
 interface TranslateOptions {
   rawLyrics: string;
   trackTitle?: string;

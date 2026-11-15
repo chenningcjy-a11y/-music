@@ -288,7 +288,10 @@ export async function translateLyricsToBilingual(
   rawLyrics: string,
   trackTitle?: string,
   artistName?: string,
-  targetLanguage: LyricTargetLanguage = 'zh-CN'
+  targetLanguage: LyricTargetLanguage = 'zh-CN',
+  style: string = 'poetic',
+  providerId?: string,
+  modelName?: string
 ): Promise<{
   bilingualLyrics: string;
   translatedCount: number;
@@ -297,7 +300,15 @@ export async function translateLyricsToBilingual(
   const res = await fetch('/api/lyrics/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rawLyrics, trackTitle, artistName, targetLanguage }),
+    body: JSON.stringify({
+      rawLyrics,
+      trackTitle,
+      artistName,
+      targetLanguage,
+      style,
+      providerId,
+      modelName,
+    }),
   });
 
   const payload = await res.json();

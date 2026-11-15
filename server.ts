@@ -7,6 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { createAiRouter } from './server/ai/taskRoutes.ts';
+import { getStoredProviderWithKey } from './server/ai/keyVault.ts';
+import {
+  callProviderTextCompletion,
+  extractJsonFromLlmText,
+} from './server/ai/providerClient.ts';
 import {
   cancelServerStemJob,
   deleteServerStemJob,
@@ -290,6 +295,19 @@ const TARGET_LANGUAGE_PROMPTS: Record<string, string> = {
   ja: 'Japanese (日本語). Write poetic, natural Japanese lyrics preserving emotional subtlety and lyrical imagery.',
 };
 
+const STYLE_INSTRUCTIONS: Record<string, string> = {
+  poetic:
+    '诗意翻译风格：具有诗歌般的美感与韵律（信、达、雅），语言自然优美，保留原歌词的核心意境与情感，绝不要机械逐字硬翻，保持每句行文凝练，适合歌唱韵律。',
+  literal:
+    '忠实直译风格：尽可能精准保持原文原始含义与句法对应，字词对应准确，不随意添加或省略语义。',
+  natural:
+    '自然意译风格：完全符合现代中文日常表达与口语听感习惯，通俗自然、流畅亲切、易懂易哼唱。',
+  literary:
+    '文学翻译风格：注重细腻情感、深远意境与文字修辞表现力，富有文学质感与唯美氛围。',
+  bilingual:
+    '中英双语对译风格：语言精炼，突出原词精髓与情感对照，适合双语同屏对照。',
+};
+
 async function startServer() {
   await initStemJobQueue();
   const app = express();
@@ -543,43 +561,100 @@ async function startServer() {
         return;
       }
 
+      const style =
+        typeof req.body?.style === 'string' && STYLE_INSTRUCTIONS[req.body.style]
+          ? req.body.style
+          : 'poetic';
+      const providerId =
+        typeof req.body?.providerId === 'string' ? req.body.providerId.trim() : '';
+      const modelName =
+        typeof req.body?.modelName === 'string' ? req.body.modelName.trim() : '';
+
       const langInstruction = TARGET_LANGUAGE_PROMPTS[targetLanguage];
-      const ai = getGeminiClient();
-      const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: JSON.stringify({
-          song: trackTitle,
-          artist: artistName,
-          targetLanguage,
-          lines: translatable,
-        }),
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
-          systemInstruction: `You are an acclaimed literary song lyricist and poetic translator.
-Translate the given song lyrics line by line into ${langInstruction}
+      const styleInstruction = STYLE_INSTRUCTIONS[style];
+      let translations: { idx: number; translation: string }[] = [];
+
+      if (providerId) {
+        try {
+          const resolved = await getStoredProviderWithKey(providerId);
+          if (resolved && resolved.apiKey) {
+            const userPrompt = JSON.stringify({
+              song: trackTitle,
+              artist: artistName,
+              targetLanguage,
+              style,
+              lines: translatable,
+            });
+            const systemInstruction = `You are an acclaimed literary song lyricist and poetic translator.
+Translate the given song lyrics line by line into ${langInstruction}.
+Translation style requirement: ${styleInstruction}
+Guidelines:
+1. Capture the mood, poetic imagery, metaphors, and emotional flow of the entire song—avoid clunky word-for-word literalism.
+2. Keep each translated line concise, musical, and singable in cadence so it pairs gracefully beneath the original lyric.
+3. Keep recurring chorus lines consistent in phrasing and tone across the whole song.
+4. If a line is already in the target language, purely vocalizations ("Ooh", "Ah", "La la la", "Yeah"), or instrumental/credit metadata ("Instrumental", "作曲", "作词"), return an empty string "" for translation.
+5. Preserve the exact idx for every item in the input array; never merge or skip indices.
+6. Return purely valid JSON array in the format: [{"idx": 0, "translation": "..."}]`;
+
+            const responseText = await callProviderTextCompletion({
+              provider: resolved.provider,
+              apiKey: resolved.apiKey,
+              modelOverride: modelName || resolved.provider.model,
+              systemInstruction,
+              userPrompt,
+              expectJson: true,
+            });
+
+            const parsedJson = extractJsonFromLlmText<unknown>(responseText);
+            if (Array.isArray(parsedJson)) {
+              translations = parsedJson as { idx: number; translation: string }[];
+            }
+          }
+        } catch (providerErr) {
+          console.warn('Selected provider translation failed, falling back to Gemini:', providerErr);
+        }
+      }
+
+      if (!translations || translations.length === 0) {
+        const ai = getGeminiClient();
+        const response = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: JSON.stringify({
+            song: trackTitle,
+            artist: artistName,
+            targetLanguage,
+            style,
+            lines: translatable,
+          }),
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+            systemInstruction: `You are an acclaimed literary song lyricist and poetic translator.
+Translate the given song lyrics line by line into ${langInstruction}.
+Translation style requirement: ${styleInstruction}
 Guidelines for poetic beauty:
 1. Capture the mood, poetic imagery, metaphors, and emotional flow of the entire song—avoid clunky word-for-word literalism.
 2. Keep each translated line concise, musical, and singable in cadence so it pairs gracefully beneath the original lyric.
 3. Keep recurring chorus lines consistent in phrasing and tone across the whole song.
 4. If a line is already in the target language, purely vocalizations ("Ooh", "Ah", "La la la", "Yeah"), or instrumental/credit metadata ("Instrumental", "作曲", "作词"), return an empty string "" for translation.
 5. Preserve the exact idx for every item in the input array; never merge or skip indices.`,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                idx: { type: Type.INTEGER },
-                translation: { type: Type.STRING },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  idx: { type: Type.INTEGER },
+                  translation: { type: Type.STRING },
+                },
+                required: ['idx', 'translation'],
               },
-              required: ['idx', 'translation'],
             },
           },
-        },
-      });
+        });
 
-      const jsonText = (response.text ?? '[]').trim();
-      const translations = JSON.parse(jsonText) as { idx: number; translation: string }[];
+        const jsonText = (response.text ?? '[]').trim();
+        translations = JSON.parse(jsonText) as { idx: number; translation: string }[];
+      }
       const transMap = new Map<number, string>();
       for (const item of translations) {
         if (typeof item.idx === 'number' && typeof item.translation === 'string') {
