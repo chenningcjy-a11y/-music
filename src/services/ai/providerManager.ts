@@ -64,6 +64,7 @@ export function inferClientModelCapabilities(
 export async function fetchProviders(): Promise<{
   defaultProviderId: string | null;
   providers: AiProviderConfig[];
+  builtinGeminiAvailable?: boolean;
   securityMode: string;
 }> {
   const res = await fetch('/api/ai/providers');

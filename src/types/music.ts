@@ -3,6 +3,7 @@ export type NavPage =
   | 'library'
   | 'playlists'
   | 'lyrics'
+  | 'mv'
   | 'audio'
   | 'ai'
   | 'tasks'
@@ -158,11 +159,59 @@ export interface PersonalizationSettings {
   reducedMotion?: boolean;
   showBilingualLyrics: boolean;
   showWordSync: boolean;
-  showVinylParticles: boolean;
+  showVinylParticles?: boolean;
   showLiquidWave: boolean;
   aiTranslationEngine?: string; // providerId or 'default'
   aiTranslationModel?: string;
   importMode?: 'lean' | 'full'; // 'lean' = 仅导入音源与封面 (精简导入)
+  mvBackgroundEnabled?: boolean;
+  mvStandaloneOnly?: boolean;
+  mvBlurPx?: number;
+  mvOpacityPct?: number;
+  mvUiFadeInSec?: number; // Global UI fade-in duration/lead time (s) before music resumes
+  mvUiFadeOutSec?: number; // Global UI fade-out duration/lead time (s) before mid-break or outro
+}
+
+export interface MvMidBreakRange {
+  id: string;
+  label?: string;
+  audioTriggerSec: number; // Song audio timestamp (s) where music pauses for MV non-audio segment
+  mvStartSec: number; // MV timestamp (s) where non-audio segment begins
+  mvEndSec: number; // MV timestamp (s) where singing/music resumes
+}
+
+export interface TrackMvTimelineConfig {
+  introEnabled: boolean;
+  introEndSec: number; // MV time (s) where song audio 0:00 begins
+  midBreaks: MvMidBreakRange[];
+  outroEnabled: boolean;
+  outroEndSec?: number; // Optional MV end timestamp; defaults to full video duration
+  fadeTransitionSec: number; // Lead/fade time (s) for UI & background blur transition
+  syncOffsetSec: number; // Fine manual sync offset (s)
+  playbackRateAdjust: number; // Micro speed trim (0.98 ~ 1.02)
+}
+
+export type MvTheaterPhase = 'normal' | 'intro' | 'mid-break' | 'outro';
+
+export interface TrackMvMeta {
+  id: string;
+  trackId: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  durationSec: number;
+  sourceType: 'local' | 'url';
+  externalUrl?: string;
+  addedAt: number;
+  isActive: boolean;
+  blurPx: number;
+  opacityPct: number;
+  timeline: TrackMvTimelineConfig;
+}
+
+export interface TrackMvRecord extends TrackMvMeta {
+  videoBlob?: Blob;
 }
 
 export interface PlaybackPrefs {

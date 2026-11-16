@@ -1,4 +1,5 @@
 import express, { Router } from 'express';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
   clearProviderKey,
   deleteProvider,
@@ -170,6 +171,7 @@ export function createAiRouter(): Router {
       const data = await listPublicProviders();
       res.json({
         ...data,
+        builtinGeminiAvailable: Boolean(process.env.GEMINI_API_KEY),
         securityMode: 'backend-encrypted-proxy',
       });
     } catch (err) {
@@ -885,6 +887,333 @@ CRITICAL RULES:
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : 'AI 任务调度解析失败',
+      });
+    }
+  });
+
+  // 7. AI MV Theater Intro / Outro Boundary Analyzer (multimodal frames + acoustic correlation)
+  router.post('/tasks/mv-theater-analyze', async (req, res) => {
+    try {
+      const {
+        providerId,
+        model,
+        mvDurationSec = 0,
+        songDurationSec = 0,
+        trackTitle = '',
+        artistName = '',
+        mvTitle = '',
+        firstLyricSec = null,
+        lastLyricSec = null,
+        headCorrelationCandidates = [],
+        tailCorrelationCandidates = [],
+        mvSilenceSegments = [],
+        mvEnergyTimeline = [],
+        songEnergyTimeline = [],
+        frames = [],
+      } = req.body || {};
+
+      const safeMvDur = Math.max(0, Number(mvDurationSec) || 0);
+      const safeSongDur = Math.max(0, Number(songDurationSec) || 0);
+      if (safeMvDur <= 0) {
+        res.status(400).json({ error: '请先等待 MV 视频元数据加载完成再进行 AI 分析' });
+        return;
+      }
+
+      const sanitizeFrames: { label: string; mimeType: string; base64Data: string }[] =
+        Array.isArray(frames)
+          ? frames
+              .slice(0, 10)
+              .filter(
+                (f): f is { timestampSec: number; base64Data: string; mimeType?: string } =>
+                  Boolean(f && typeof f.base64Data === 'string' && f.base64Data.length > 20)
+              )
+              .map((f) => ({
+                label: `[MV 视频关键帧 · 时刻 t=${Number(f.timestampSec || 0).toFixed(1)}s]`,
+                mimeType: typeof f.mimeType === 'string' ? f.mimeType : 'image/jpeg',
+                base64Data: f.base64Data,
+              }))
+          : [];
+
+      const systemInstruction = `You are LUMINA MUSIC's MV Theater synchronization & film-editing director.
+Your task is to pinpoint:
+1. **前瞻播放段 (Intro)**: A pre-song cinematic/dialogue/title sequence at the beginning of the MV video BEFORE the main song audio starts (` +
+        "`0s -> introEndSec`" +
+        `). During intro, MV original video sound plays without album UI. At ` +
+        "`introEndSec`" +
+        `, the song audio starts at ` +
+        "`0:00.0`" +
+        `.
+2. **后段尾声 (Outro)**: A post-song epilogue/credits/dialogue scene AFTER the main song audio finishes (` +
+        "`outroStartSec -> outroEndSec`" +
+        `). Typically ` +
+        "`outroStartSec`" +
+        ` aligns near where the song audio ends inside the MV, and ` +
+        "`outroEndSec`" +
+        ` is where credits/epilogue finish (up to ` +
+        "`mvDurationSec`" +
+        `).
+
+HOW TO REASON FROM EVIDENCE:
+- You are given REAL acoustic correlation peaks (` +
+        "`headCorrelationCandidates`" +
+        ` comparing song start vs MV waveform; ` +
+        "`tailCorrelationCandidates`" +
+        ` comparing song ending vs MV waveform), ` +
+        "`mvSilenceSegments`" +
+        `, 1-second/step amplitude curves (` +
+        "`mvEnergyTimeline`" +
+        ` & ` +
+        "`songEnergyTimeline`" +
+        `), LRC vocal cue bounds, and (when supported) labeled JPEG keyframes from the MV.
+- If ` +
+        "`mvDurationSec <= songDurationSec + 1.5`" +
+        ` AND no obvious opening title/silence scene exists, do NOT invent a long intro or outro (` +
+        "`recommended: false`" +
+        `).
+- Strictly clamp timestamps within ` +
+        `[0, ${safeMvDur.toFixed(2)}]` +
+        ` seconds, and ensure ` +
+        "`outroEndSec >= outroStartSec`" +
+        `.
+- Never fabricate details you cannot verify from the provided numbers or video frames. Write all explanations in clear, concise Simplified Chinese so the user can visually verify video frames and listen to the audio before confirming.
+
+Return strictly valid JSON matching:
+{
+  "summary": string,
+  "intro": {
+    "recommended": boolean,
+    "introEndSec": number,
+    "confidence": "high" | "medium" | "low",
+    "reason": string,
+    "evidenceTimestamps": number[]
+  },
+  "outro": {
+    "recommended": boolean,
+    "outroStartSec": number,
+    "outroEndSec": number,
+    "confidence": "high" | "medium" | "low",
+    "reason": string,
+    "evidenceTimestamps": number[]
+  }
+}`;
+
+      const promptPayload = JSON.stringify({
+        trackTitle,
+        artistName,
+        mvTitle,
+        mvDurationSec: safeMvDur,
+        songDurationSec: safeSongDur,
+        extraDurationSec: Number((safeMvDur - safeSongDur).toFixed(2)),
+        firstLyricSec,
+        lastLyricSec,
+        headCorrelationCandidates,
+        tailCorrelationCandidates,
+        mvSilenceSegments,
+        mvEnergyTimeline,
+        songEnergyTimeline,
+        attachedVisualFramesCount: sanitizeFrames.length,
+      });
+
+      const forceBuiltin = providerId === '__builtin_gemini__';
+      const resolved = forceBuiltin
+        ? null
+        : await getStoredProviderWithKey(
+            typeof providerId === 'string' && providerId ? providerId : undefined
+          );
+
+      let providerName = '';
+      let modelUsed = '';
+      let usedVisualFrames = false;
+      let rawText = '';
+
+      if (resolved && resolved.apiKey && resolved.provider.enabled) {
+        const { provider, apiKey } = resolved;
+        const effectiveModel = (typeof model === 'string' && model.trim()) || provider.model;
+        providerName = provider.name;
+        modelUsed = effectiveModel;
+        usedVisualFrames =
+          sanitizeFrames.length > 0 &&
+          (provider.kind === 'gemini' ||
+            /gpt-4o|gpt-4\.1|vision|vl|claude|gemini/i.test(effectiveModel));
+
+        rawText = await callProviderTextCompletion({
+          provider,
+          apiKey,
+          modelOverride: effectiveModel,
+          systemInstruction,
+          userPrompt: promptPayload,
+          expectJson: true,
+          imageFrames: sanitizeFrames.length > 0 ? sanitizeFrames : undefined,
+        });
+      } else if (process.env.GEMINI_API_KEY) {
+        const ai = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
+          },
+        });
+        const builtinModel =
+          typeof model === 'string' && model.trim().startsWith('gemini-')
+            ? model.trim()
+            : 'gemini-4-hydrogen';
+        providerName = '内置 Gemini 多模态引擎';
+        modelUsed = builtinModel;
+        usedVisualFrames = sanitizeFrames.length > 0;
+
+        const parts: Array<
+          { text: string } | { inlineData: { mimeType: string; data: string } }
+        > = [];
+        for (const frame of sanitizeFrames) {
+          parts.push({ text: frame.label });
+          parts.push({
+            inlineData: { mimeType: frame.mimeType, data: frame.base64Data },
+          });
+        }
+        parts.push({ text: promptPayload });
+
+        const response = await ai.models.generateContent({
+          model: builtinModel,
+          contents: { parts },
+          config: {
+            systemInstruction,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                summary: { type: Type.STRING },
+                intro: {
+                  type: Type.OBJECT,
+                  properties: {
+                    recommended: { type: Type.BOOLEAN },
+                    introEndSec: { type: Type.NUMBER },
+                    confidence: { type: Type.STRING },
+                    reason: { type: Type.STRING },
+                    evidenceTimestamps: {
+                      type: Type.ARRAY,
+                      items: { type: Type.NUMBER },
+                    },
+                  },
+                  required: [
+                    'recommended',
+                    'introEndSec',
+                    'confidence',
+                    'reason',
+                    'evidenceTimestamps',
+                  ],
+                },
+                outro: {
+                  type: Type.OBJECT,
+                  properties: {
+                    recommended: { type: Type.BOOLEAN },
+                    outroStartSec: { type: Type.NUMBER },
+                    outroEndSec: { type: Type.NUMBER },
+                    confidence: { type: Type.STRING },
+                    reason: { type: Type.STRING },
+                    evidenceTimestamps: {
+                      type: Type.ARRAY,
+                      items: { type: Type.NUMBER },
+                    },
+                  },
+                  required: [
+                    'recommended',
+                    'outroStartSec',
+                    'outroEndSec',
+                    'confidence',
+                    'reason',
+                    'evidenceTimestamps',
+                  ],
+                },
+              },
+              required: ['summary', 'intro', 'outro'],
+            },
+          },
+        });
+        rawText = (response.text ?? '').trim();
+      } else {
+        res.status(400).json({
+          error:
+            '尚未配置可用的 AI 服务商。请前往「AI 智能中心 → API 服务管理」添加并启用您的 API 服务商（支持 Gemini / DeepSeek / OpenAI 等）。',
+        });
+        return;
+      }
+
+      const parsed = extractJsonFromLlmText<{
+        summary?: string;
+        intro?: {
+          recommended?: boolean;
+          introEndSec?: number;
+          confidence?: string;
+          reason?: string;
+          evidenceTimestamps?: number[];
+        };
+        outro?: {
+          recommended?: boolean;
+          outroStartSec?: number;
+          outroEndSec?: number;
+          confidence?: string;
+          reason?: string;
+          evidenceTimestamps?: number[];
+        };
+      }>(rawText);
+
+      const clampMv = (v: unknown, fallback = 0) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return fallback;
+        return Number(Math.max(0, Math.min(safeMvDur, n)).toFixed(2));
+      };
+
+      const introEndSec = clampMv(parsed.intro?.introEndSec, 0);
+      const outroStartSec = clampMv(parsed.outro?.outroStartSec, safeMvDur);
+      const outroEndSec = Math.max(
+        outroStartSec,
+        clampMv(parsed.outro?.outroEndSec, safeMvDur)
+      );
+
+      const normConf = (c: unknown): 'high' | 'medium' | 'low' =>
+        c === 'high' || c === 'medium' || c === 'low' ? c : 'medium';
+
+      const normTimes = (arr: unknown): number[] =>
+        Array.isArray(arr)
+          ? arr
+              .map((x) => Number(x))
+              .filter((x) => Number.isFinite(x) && x >= 0 && x <= safeMvDur)
+              .slice(0, 6)
+              .map((x) => Number(x.toFixed(1)))
+          : [];
+
+      res.json({
+        providerName,
+        modelUsed,
+        usedVisualFrames,
+        summary: parsed.summary || '已完成 MV 与音乐时间轴联合识别，请对照下方视频画面与音频波形确认。',
+        intro: {
+          recommended: Boolean(parsed.intro?.recommended && introEndSec > 0.3),
+          introEndSec,
+          confidence: normConf(parsed.intro?.confidence),
+          reason:
+            parsed.intro?.reason ||
+            '已结合 MV 前半段静默/剧情区与音乐开头声波相关性进行测算。',
+          evidenceTimestamps: normTimes(parsed.intro?.evidenceTimestamps),
+        },
+        outro: {
+          recommended: Boolean(
+            parsed.outro?.recommended && outroEndSec > outroStartSec + 0.4
+          ),
+          outroStartSec,
+          outroEndSec,
+          confidence: normConf(parsed.outro?.confidence),
+          reason:
+            parsed.outro?.reason ||
+            '已结合音乐尾声声波衰减位置与 MV 剩余片尾区间进行测算。',
+          evidenceTimestamps: normTimes(parsed.outro?.evidenceTimestamps),
+        },
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'AI 分析 MV 剧场分段失败',
       });
     }
   });

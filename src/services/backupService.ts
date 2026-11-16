@@ -3,6 +3,7 @@ import {
   clearAiTasks,
   clearAllMusicData,
   getAllAiTasks,
+  getAllMvRecords,
   getAllPlaylists,
   getAllStemRecords,
   getAllTracks,
@@ -15,6 +16,7 @@ import {
   savePersonalization,
   savePlaybackPrefs,
   savePlaylist,
+  saveTrackMv,
   saveTrackStems,
   saveTrackWithBlob,
 } from './storage';
@@ -30,6 +32,8 @@ import {
   PlaybackPrefs,
   Playlist,
   TrackMetadata,
+  TrackMvMeta,
+  TrackMvRecord,
   TrackStemsRecord,
 } from '../types/music';
 
@@ -50,6 +54,11 @@ interface SerializedStemEntry {
   instrumentalBase64: string;
 }
 
+interface SerializedMvEntry {
+  meta: TrackMvMeta;
+  videoBase64?: string;
+}
+
 export interface LuminaBackupBundle {
   format: 'lumina-music-backup';
   version: 2;
@@ -57,6 +66,7 @@ export interface LuminaBackupBundle {
   tracks: SerializedTrackEntry[];
   playlists: Playlist[];
   stems: SerializedStemEntry[];
+  mvs?: SerializedMvEntry[];
   aiTasks: AiTaskRecord[];
   settings: {
     audioSettings: AudioDspSettings;
@@ -76,6 +86,7 @@ export interface BackupImportSummary {
   tracksRestored: number;
   playlistsRestored: number;
   stemsRestored: number;
+  mvsRestored?: number;
   tasksRestored: number;
   tasksNormalizedToResubmit: number;
 }
@@ -118,6 +129,7 @@ export async function exportFullLuminaBackup(): Promise<{
     tracks,
     playlists,
     stemRecords,
+    mvRecords,
     aiTasks,
     audioSettings,
     personalization,
@@ -128,6 +140,7 @@ export async function exportFullLuminaBackup(): Promise<{
     getAllTracks(),
     getAllPlaylists(),
     getAllStemRecords(),
+    getAllMvRecords(),
     getAllAiTasks(),
     loadAudioSettings(),
     loadPersonalization(),
@@ -171,6 +184,15 @@ export async function exportFullLuminaBackup(): Promise<{
     });
   }
 
+  const serializedMvs: SerializedMvEntry[] = [];
+  for (const mv of mvRecords) {
+    const { videoBlob, ...meta } = mv;
+    serializedMvs.push({
+      meta,
+      videoBase64: videoBlob ? await blobToBase64(videoBlob) : undefined,
+    });
+  }
+
   // Explicitly strip any secret indicator or key material
   const safeProviders = (providerResp.providers || []).map(
     ({ hasKey: _ignored, ...rest }) => rest
@@ -186,6 +208,7 @@ export async function exportFullLuminaBackup(): Promise<{
     tracks: serializedTracks,
     playlists,
     stems: serializedStems,
+    mvs: serializedMvs,
     aiTasks,
     settings: {
       audioSettings,
@@ -251,6 +274,19 @@ export async function importFullLuminaBackup(
     stemsRestored++;
   }
 
+  let mvsRestored = 0;
+  for (const entry of parsed.mvs || []) {
+    if (!entry?.meta?.id) continue;
+    const record: TrackMvRecord = {
+      ...entry.meta,
+      videoBlob: entry.videoBase64
+        ? base64ToBlob(entry.videoBase64, entry.meta.mimeType || 'video/mp4')
+        : undefined,
+    };
+    await saveTrackMv(record);
+    mvsRestored++;
+  }
+
   if (parsed.settings?.audioSettings) {
     await saveAudioSettings(parsed.settings.audioSettings);
   }
@@ -295,6 +331,7 @@ export async function importFullLuminaBackup(
     tracksRestored,
     playlistsRestored,
     stemsRestored,
+    mvsRestored,
     tasksRestored: normalizedTasks.length,
     tasksNormalizedToResubmit,
   };

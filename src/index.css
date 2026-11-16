@@ -55,34 +55,57 @@
   background: rgba(255, 255, 255, 0.28);
 }
 
-/* Custom range slider styling for audio controls and EQ */
+/* Custom range slider styling for audio controls, MV timeline scrubbing, and EQ */
 input[type="range"].lumina-range {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
   cursor: pointer;
+  height: 28px;
+  touch-action: none;
+  margin: 0;
+  padding: 0;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 input[type="range"].lumina-range::-webkit-slider-runnable-track {
-  height: 4px;
+  height: 6px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.16);
 }
 
 input[type="range"].lumina-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 9999px;
   background: #ffffff;
-  box-shadow: 0 0 10px rgba(232, 67, 127, 0.75);
-  margin-top: -5px;
-  transition: transform 0.15s ease;
+  box-shadow: 0 0 12px rgba(232, 67, 127, 0.85);
+  margin-top: -6px;
+  transition: transform 0.12s ease;
 }
 
-input[type="range"].lumina-range:hover::-webkit-slider-thumb {
-  transform: scale(1.18);
+input[type="range"].lumina-range:hover::-webkit-slider-thumb,
+input[type="range"].lumina-range:active::-webkit-slider-thumb {
+  transform: scale(1.22);
+}
+
+input[type="range"].lumina-range::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+input[type="range"].lumina-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(232, 67, 127, 0.85);
+  transition: transform 0.12s ease;
 }
 
 input[type="range"].lumina-range-vertical {

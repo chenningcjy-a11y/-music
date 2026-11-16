@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Bot,
   Disc3,
+  Film,
   FolderHeart,
   ListChecks,
   ListMusic,
@@ -24,6 +25,8 @@ import { AiTasksPage } from './pages/AiTasksPage';
 import { AudioDspPage } from './pages/AudioDspPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { LyricsPage } from './pages/LyricsPage';
+import { MvPage } from './pages/MvPage';
+import { MvStandalonePage } from './pages/MvStandalonePage';
 import { PlayerPage } from './pages/PlayerPage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -39,6 +42,7 @@ const NAV_ITEMS: {
   { id: 'library', label: '我的音乐', shortLabel: '音乐', icon: FolderHeart },
   { id: 'playlists', label: '播放列表', shortLabel: '歌单', icon: ListMusic },
   { id: 'lyrics', label: '歌词中心', shortLabel: '歌词', icon: MessageSquareText },
+  { id: 'mv', label: 'MV 剧场', shortLabel: 'MV', icon: Film },
   { id: 'audio', label: '音质与音效', shortLabel: '音效', icon: SlidersHorizontal },
   { id: 'ai', label: 'AI 智能中心', shortLabel: 'AI', icon: Bot },
   { id: 'tasks', label: 'AI 任务中心', shortLabel: '任务', icon: ListChecks },
@@ -74,7 +78,7 @@ const LuminaShell: React.FC = () => {
       : 'font-sans-modern';
 
   return (
-    <div className={`relative flex flex-col md:flex-row h-screen w-screen overflow-hidden select-none ${fontClass}`}>
+    <div className={`relative flex flex-col md:flex-row h-screen w-screen overflow-hidden ${fontClass}`}>
       {/* Real-time Audio-Reactive Liquid Fluid Background */}
       <DynamicBackground
         palette={activePalette}
@@ -205,7 +209,7 @@ const LuminaShell: React.FC = () => {
 
       {/* Main Content Stage */}
       <main
-        className={`flex-1 min-w-0 min-h-0 relative z-10 ${
+        className={`flex-1 h-full min-w-0 min-h-0 overflow-hidden relative z-10 ${
           isFullscreen ? 'pb-0' : 'pb-14 md:pb-0'
         }`}
       >
@@ -213,6 +217,7 @@ const LuminaShell: React.FC = () => {
         {activePage === 'library' && <LibraryPage />}
         {activePage === 'playlists' && <PlaylistsPage />}
         {activePage === 'lyrics' && <LyricsPage />}
+        {activePage === 'mv' && <MvPage />}
         {activePage === 'audio' && <AudioDspPage />}
         {activePage === 'ai' && <AiCenterPage />}
         {activePage === 'tasks' && <AiTasksPage />}
@@ -237,7 +242,7 @@ const LuminaShell: React.FC = () => {
       {!isFullscreen && (
         <nav
           aria-label="底部导航"
-          className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-[#14050c]/88 backdrop-blur-xl border-t border-white/12 grid grid-cols-8 items-center px-1"
+          className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-[#14050c]/88 backdrop-blur-xl border-t border-white/12 grid grid-cols-9 items-center px-0.5"
         >
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -252,7 +257,7 @@ const LuminaShell: React.FC = () => {
                   color: active ? activePalette.primary : 'rgba(255,255,255,0.58)',
                 }}
               >
-                <Icon className="w-[18px] h-[18px]" />
+                <Icon className="w-[17px] h-[17px]" />
                 <span className="text-[10px] font-medium whitespace-nowrap">
                   {item.id === 'tasks' && activeTaskCount > 0
                     ? `${item.shortLabel}(${activeTaskCount})`
@@ -278,6 +283,18 @@ const LuminaShell: React.FC = () => {
 };
 
 export default function App() {
+  const isMvStandalone =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mvTheater') === '1';
+
+  if (isMvStandalone) {
+    return (
+      <ErrorBoundary>
+        <MvStandalonePage />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <MusicProvider>

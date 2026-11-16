@@ -369,7 +369,7 @@ export const SettingsPage: React.FC = () => {
 
         <div>
           <span className="text-xs text-white/70 block mb-2.5">
-            粒子与波浪渲染强度（性能较低的平板可选「低功耗」以保持流畅）
+            光环与波浪渲染强度（性能较低的平板可选「低功耗」以保持流畅）
           </span>
           <div className="grid grid-cols-3 gap-2.5 max-w-md">
             {(
@@ -401,25 +401,6 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.04] border border-white/10 cursor-pointer">
-            <div>
-              <span className="text-sm font-medium text-white block">
-                专辑封面音频粒子与光环
-              </span>
-              <span className="text-xs text-white/55 block mt-0.5">
-                低/中/高频实时驱动外围粒子扩散与闪烁
-              </span>
-            </div>
-            <input
-              type="checkbox"
-              checked={personalization.showVinylParticles}
-              onChange={(e) =>
-                updatePersonalization({ showVinylParticles: e.target.checked })
-              }
-              className="accent-rose-500 w-4 h-4 shrink-0"
-            />
-          </label>
-
           <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.04] border border-white/10 cursor-pointer">
             <div>
               <span className="text-sm font-medium text-white block">

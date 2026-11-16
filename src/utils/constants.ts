@@ -63,11 +63,17 @@ export const DEFAULT_PERSONALIZATION: PersonalizationSettings = {
   reducedMotion: false,
   showBilingualLyrics: true,
   showWordSync: true,
-  showVinylParticles: true,
+  showVinylParticles: false,
   showLiquidWave: true,
   aiTranslationEngine: 'default',
   aiTranslationModel: '',
   importMode: 'lean',
+  mvBackgroundEnabled: true,
+  mvStandaloneOnly: false,
+  mvBlurPx: 0,
+  mvOpacityPct: 100,
+  mvUiFadeInSec: 1.0,
+  mvUiFadeOutSec: 1.0,
 };
 
 export const DEFAULT_PLAYBACK_PREFS: PlaybackPrefs = {

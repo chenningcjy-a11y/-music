@@ -3,24 +3,12 @@ import { Disc3, ImagePlus } from 'lucide-react';
 import { audioEngine } from '../../audio/AudioEngine';
 import { AnimationIntensity, TrackColorPalette } from '../../types/music';
 
-interface Particle {
-  angle: number;
-  baseRadius: number;
-  orbitSpeed: number;
-  size: number;
-  phase: number;
-  band: 'bass' | 'mid' | 'high';
-  alphaBase: number;
-  hueMix: number;
-}
-
 interface AlbumVinylStageProps {
   coverUrl?: string;
   title: string;
   trackId?: string;
   isPlaying: boolean;
   palette: TrackColorPalette;
-  showParticles: boolean;
   animationIntensity: AnimationIntensity;
   onChangeCover?: (file: File) => void;
   compact?: boolean;
@@ -33,7 +21,6 @@ export const AlbumVinylStage: React.FC<AlbumVinylStageProps> = ({
   trackId,
   isPlaying,
   palette,
-  showParticles,
   animationIntensity,
   onChangeCover,
   compact = false,
@@ -60,35 +47,15 @@ export const AlbumVinylStage: React.FC<AlbumVinylStageProps> = ({
   const propsRef = useRef({
     isPlaying,
     palette,
-    showParticles,
     animationIntensity,
   });
-  propsRef.current = { isPlaying, palette, showParticles, animationIntensity };
+  propsRef.current = { isPlaying, palette, animationIntensity };
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    const particleCount =
-      animationIntensity === 'low' ? 32 : animationIntensity === 'high' ? 88 : 58;
-
-    // Deterministic particle ring layout
-    const particles: Particle[] = Array.from({ length: particleCount }, (_, i) => {
-      const band: Particle['band'] =
-        i % 3 === 0 ? 'bass' : i % 3 === 1 ? 'mid' : 'high';
-      return {
-        angle: (i / particleCount) * Math.PI * 2,
-        baseRadius: 1.08 + ((i * 17) % 100) / 310, // normalized to disc radius
-        orbitSpeed: (0.0012 + ((i * 13) % 10) * 0.00022) * (i % 2 === 0 ? 1 : -1),
-        size: 1.4 + ((i * 7) % 5) * 0.55,
-        phase: i * 0.73,
-        band,
-        alphaBase: 0.35 + ((i * 11) % 10) * 0.055,
-        hueMix: (i % 10) / 10,
-      };
-    });
 
     let rafId = 0;
     let rotationDeg = 0;
@@ -116,7 +83,7 @@ export const AlbumVinylStage: React.FC<AlbumVinylStageProps> = ({
     ro.observe(canvas);
 
     const render = () => {
-      const { isPlaying: playing, palette: pal, showParticles: particlesOn, animationIntensity: intensity } =
+      const { isPlaying: playing, palette: pal, animationIntensity: intensity } =
         propsRef.current;
 
       // Smooth rotational inertia for vinyl record
@@ -240,65 +207,6 @@ export const AlbumVinylStage: React.FC<AlbumVinylStageProps> = ({
         ctx.stroke();
       }
 
-      // 4. Real-time Audio-Reactive Particle Field
-      if (particlesOn) {
-        for (let i = 0; i < particles.length; i++) {
-          const p = particles[i];
-          const speedBoost = 1 + smoothMid * 2.8 * auraScale;
-          p.angle += p.orbitSpeed * (playing ? speedBoost : 0.25);
-
-          // Bass controls outward expansion & vibration
-          const expansion =
-            smoothVol * 0.24 * auraScale +
-            (p.band === 'bass'
-              ? smoothBass * 0.22 * auraScale
-              : p.band === 'mid'
-              ? smoothMid * 0.14 * auraScale
-              : smoothHigh * 0.1 * auraScale);
-
-          const jitter =
-            p.band === 'bass'
-              ? Math.sin(timeAcc * 5 + p.phase) * smoothBass * 6 * dpr
-              : p.band === 'mid'
-              ? Math.cos(timeAcc * 3.5 + p.phase) * smoothMid * 8 * dpr
-              : Math.sin(timeAcc * 9 + p.phase) * smoothHigh * 5 * dpr;
-
-          const r = discRadius * (p.baseRadius + expansion) + jitter;
-          const x = cx + Math.cos(p.angle) * r;
-          const y = cy + Math.sin(p.angle) * r;
-
-          // High freq controls twinkle / sparkle intensity
-          const shimmer =
-            0.5 +
-            0.5 * Math.sin(timeAcc * (3 + smoothHigh * 10) + p.phase);
-          const alpha = Math.min(
-            0.95,
-            (p.alphaBase + smoothHigh * 0.45 * shimmer) * (playing ? 1 : 0.32)
-          );
-          const radiusPx =
-            p.size *
-            dpr *
-            (1 + (p.band === 'bass' ? smoothBass * 0.8 : smoothHigh * 0.65));
-
-          const pr = Math.round(r1 + (r2 - r1) * p.hueMix);
-          const pg = Math.round(g1 + (g2 - g1) * p.hueMix);
-          const pb = Math.round(b1 + (b2 - b1) * p.hueMix);
-
-          ctx.beginPath();
-          ctx.arc(x, y, radiusPx, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${pr}, ${pg}, ${pb}, ${alpha})`;
-          ctx.fill();
-
-          // Subtle core highlight for high-freq particles
-          if (p.band === 'high' && smoothHigh > 0.22 && playing) {
-            ctx.beginPath();
-            ctx.arc(x, y, radiusPx * 0.45, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.85})`;
-            ctx.fill();
-          }
-        }
-      }
-
       rafId = requestAnimationFrame(render);
     };
 
@@ -317,7 +225,7 @@ export const AlbumVinylStage: React.FC<AlbumVinylStageProps> = ({
 
   return (
     <div className={`relative flex items-center justify-center select-none ${stageSizeClass}`}>
-      {/* Real-time Web Audio particle & aura canvas */}
+      {/* Real-time Web Audio aura canvas */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none"

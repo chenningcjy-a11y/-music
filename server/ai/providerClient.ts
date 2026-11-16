@@ -373,6 +373,7 @@ export async function callProviderTextCompletion(params: {
   userPrompt: string;
   expectJson?: boolean;
   audioInline?: { mimeType: string; base64Data: string };
+  imageFrames?: { label: string; mimeType: string; base64Data: string }[];
   signal?: AbortSignal;
 }): Promise<string> {
   const {
@@ -383,6 +384,7 @@ export async function callProviderTextCompletion(params: {
     userPrompt,
     expectJson,
     audioInline,
+    imageFrames,
     signal: externalSignal,
   } = params;
 
@@ -427,6 +429,17 @@ export async function callProviderTextCompletion(params: {
           },
         });
       }
+      if (imageFrames && imageFrames.length > 0) {
+        for (const frame of imageFrames) {
+          parts.push({ text: frame.label });
+          parts.push({
+            inlineData: {
+              mimeType: frame.mimeType,
+              data: frame.base64Data,
+            },
+          });
+        }
+      }
       parts.push({ text: userPrompt });
 
       const useThinking =
@@ -460,11 +473,41 @@ export async function callProviderTextCompletion(params: {
     const customHeaders = parseCustomHeaders(provider.customHeadersJson);
     const endpoint = `${base}/chat/completions`;
 
+    const lowerModel = model.toLowerCase();
+    const supportsVision =
+      imageFrames &&
+      imageFrames.length > 0 &&
+      (provider.kind === 'openai' || provider.kind === 'openai-compatible') &&
+      (lowerModel.includes('gpt-4o') ||
+        lowerModel.includes('gpt-4.1') ||
+        lowerModel.includes('gpt-4-turbo') ||
+        lowerModel.includes('vision') ||
+        lowerModel.includes('vl') ||
+        lowerModel.includes('claude-3') ||
+        lowerModel.includes('claude-sonnet') ||
+        lowerModel.includes('gemini'));
+
+    const userContent: unknown = supportsVision
+      ? [
+          { type: 'text', text: userPrompt },
+          ...imageFrames!.flatMap((f) => [
+            { type: 'text', text: f.label },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${f.mimeType};base64,${f.base64Data}`,
+                detail: 'low',
+              },
+            },
+          ]),
+        ]
+      : userPrompt;
+
     const body: Record<string, unknown> = {
       model,
       messages: [
         { role: 'system', content: systemInstruction },
-        { role: 'user', content: userPrompt },
+        { role: 'user', content: userContent },
       ],
     };
 

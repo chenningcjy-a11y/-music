@@ -9,37 +9,8 @@ interface FullscreenCoverFluidStageProps {
   trackId?: string;
   isPlaying: boolean;
   palette: TrackColorPalette;
-  showParticles: boolean;
   animationIntensity?: AnimationIntensity;
   reducedMotion?: boolean;
-}
-
-interface SparseParticle {
-  angle: number;
-  angularSpeed: number;
-  radialOffset: number;
-  radialDrift: number;
-  size: number;
-  alphaPhase: number;
-  alphaSpeed: number;
-  useSecondary: boolean;
-}
-
-function createSparseParticles(count: number): SparseParticle[] {
-  const items: SparseParticle[] = [];
-  for (let i = 0; i < count; i++) {
-    items.push({
-      angle: (i / count) * Math.PI * 2 + Math.random() * 0.4,
-      angularSpeed: (0.04 + Math.random() * 0.06) * (i % 2 === 0 ? 1 : -1),
-      radialOffset: 10 + Math.random() * 28,
-      radialDrift: 4 + Math.random() * 8,
-      size: 1.5 + Math.random() * 1.8,
-      alphaPhase: Math.random() * Math.PI * 2,
-      alphaSpeed: 0.6 + Math.random() * 0.7,
-      useSecondary: i % 3 === 1,
-    });
-  }
-  return items;
 }
 
 /**
@@ -59,33 +30,28 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
   trackId,
   isPlaying,
   palette,
-  showParticles,
   animationIntensity = 'balanced',
   reducedMotion = false,
 }) => {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [imgError, setImgError] = useState(false);
-  const [coverLoaded, setCoverLoaded] = useState(false);
 
   const stateRef = useRef({
     isPlaying,
     palette,
-    showParticles,
     animationIntensity,
     reducedMotion,
   });
   stateRef.current = {
     isPlaying,
     palette,
-    showParticles,
     animationIntensity,
     reducedMotion,
   };
 
   useEffect(() => {
     setImgError(false);
-    setCoverLoaded(false);
   }, [coverUrl, trackId]);
 
   useEffect(() => {
@@ -121,10 +87,6 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
     const observer = new ResizeObserver(updateDimensions);
     observer.observe(stageEl);
 
-    const particleCount =
-      animationIntensity === 'low' ? 6 : animationIntensity === 'high' ? 16 : 12;
-    const particles = createSparseParticles(particleCount);
-
     const curPrimary: [number, number, number] = [...palette.rgbPrimary];
     const curSecondary: [number, number, number] = [...palette.rgbSecondary];
 
@@ -144,7 +106,6 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
       const {
         isPlaying: playing,
         palette: targetPalette,
-        showParticles: particlesEnabled,
         animationIntensity: animMode,
         reducedMotion: userReducedMotion,
       } = stateRef.current;
@@ -278,51 +239,6 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
         }
       }
 
-      // 3. Sparse gentle particles orbiting softly outside the cover perimeter
-      if (particlesEnabled) {
-        const motionScale = reduceMotion ? 0 : 1;
-        for (const pt of particles) {
-          pt.angle +=
-            pt.angularSpeed *
-            dt *
-            motionScale *
-            (playing ? 1 + smoothMid * 1.1 : 0.35);
-          pt.alphaPhase += pt.alphaSpeed * dt * motionScale;
-
-          const breath = 0.5 + 0.5 * Math.sin(pt.alphaPhase);
-          const dynamicOffset =
-            pt.radialOffset +
-            breath * pt.radialDrift +
-            smoothBass * 8 +
-            smoothVol * 6;
-          const r = roundedSquareRadius(pt.angle, half) + dynamicOffset;
-          const px = cx + Math.cos(pt.angle) * r;
-          const py = cy + Math.sin(pt.angle) * r;
-
-          const pAlpha =
-            (playing ? 0.22 + smoothHigh * 0.28 + smoothVol * 0.16 : 0.12) *
-            (0.35 + 0.65 * breath);
-
-          const cR = pt.useSecondary ? sR : pR;
-          const cG = pt.useSecondary ? sG : pG;
-          const cB = pt.useSecondary ? sB : pB;
-
-          const rad = pt.size * (0.9 + smoothHigh * 0.35);
-          const glow = ctx.createRadialGradient(px, py, 0, px, py, rad * 2.6);
-          glow.addColorStop(
-            0,
-            `rgba(255, 255, 255, ${Math.min(0.8, pAlpha * 1.15).toFixed(3)})`
-          );
-          glow.addColorStop(0.38, `rgba(${cR}, ${cG}, ${cB}, ${pAlpha.toFixed(3)})`);
-          glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(px, py, rad * 2.6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
       ctx.restore();
       rafId = requestAnimationFrame(drawLoop);
     };
@@ -340,9 +256,9 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
       {/* Stationary square cover sizing container */}
       <div
         ref={stageRef}
-        className="relative w-[clamp(180px,min(40vh,32vw),360px)] aspect-square"
+        className="relative w-[clamp(150px,min(35vh,30vw),340px)] aspect-square shrink-0"
       >
-        {/* Surrounding audio-reactive fluid ripple & sparse particle canvas (behind cover) */}
+        {/* Surrounding audio-reactive fluid ripple canvas (behind cover) */}
         <canvas
           ref={canvasRef}
           aria-hidden="true"
@@ -351,7 +267,7 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
 
         {/* Square, stationary album cover */}
         <div
-          className="relative z-10 w-full h-full rounded-[28px] overflow-hidden ring-1 ring-white/15 bg-[#160812]"
+          className="relative z-10 w-full h-full rounded-[28px] overflow-hidden ring-1 ring-white/20 bg-[#160812]"
           style={{
             boxShadow:
               '0 28px 72px rgba(0, 0, 0, 0.72), 0 8px 24px rgba(0, 0, 0, 0.45)',
@@ -364,15 +280,10 @@ export const FullscreenCoverFluidStage: React.FC<FullscreenCoverFluidStageProps>
               alt={title}
               referrerPolicy="no-referrer"
               draggable={false}
-              onLoad={() => setCoverLoaded(true)}
               onError={() => setImgError(true)}
-              className={`w-full h-full object-cover transition-opacity duration-500 ${
-                coverLoaded ? 'opacity-100' : 'opacity-0'
-              }`}
+              className="w-full h-full object-cover block"
             />
-          ) : null}
-
-          {(!coverUrl || imgError || !coverLoaded) && (
+          ) : (
             <div
               className="absolute inset-0 flex items-center justify-center"
               style={{

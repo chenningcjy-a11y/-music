@@ -48,14 +48,11 @@ const LyricSlot: React.FC<LyricSlotProps> = ({ line, role, introWaiting }) => {
             ? 'text-2xl sm:text-[28px] lg:text-[34px] font-semibold text-white'
             : 'text-base sm:text-lg lg:text-xl font-normal text-white/85'
         }`}
-        style={
-          isCurrent
-            ? {
-                textShadow:
-                  '0 0 28px rgba(var(--fs-primary-rgb, 232, 67, 127), 0.52), 0 2px 14px rgba(0, 0, 0, 0.35)',
-              }
-            : undefined
-        }
+        style={{
+          textShadow: isCurrent
+            ? '0 0 28px rgba(var(--fs-primary-rgb, 232, 67, 127), 0.55), 0 2px 14px rgba(0, 0, 0, 0.85)'
+            : '0 2px 12px rgba(0, 0, 0, 0.8)',
+        }}
       >
         {line.text}
       </p>
@@ -64,9 +61,10 @@ const LyricSlot: React.FC<LyricSlotProps> = ({ line, role, introWaiting }) => {
         <p
           className={`mt-1.5 leading-relaxed break-words transition-colors duration-500 ${
             isCurrent
-              ? 'text-sm sm:text-base lg:text-lg font-normal text-white/80'
-              : 'text-xs sm:text-sm lg:text-[15px] font-light text-white/60'
+              ? 'text-sm sm:text-base lg:text-lg font-normal text-white/85'
+              : 'text-xs sm:text-sm lg:text-[15px] font-light text-white/70'
           }`}
+          style={{ textShadow: '0 2px 10px rgba(0, 0, 0, 0.8)' }}
         >
           {line.translation}
         </p>

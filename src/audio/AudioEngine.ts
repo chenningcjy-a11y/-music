@@ -6,15 +6,18 @@ export interface StemMeterLevels {
   instrumentalLevel: number; // 0..1
 }
 
-class LuminaAudioEngine {
+export class LuminaAudioEngine {
   private audioEl: HTMLAudioElement;
   private ctx: AudioContext | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
 
-  // Master & Dual-Source Input Matrix (Original HTMLAudio vs AI-Separated Stems)
+  // Master & Dual-Source Input Matrix (Original HTMLAudio vs AI-Separated Stems vs MV Video Audio)
   private originalInputGain: GainNode | null = null;
   private stemsMixGain: GainNode | null = null;
+  private songMixGain: GainNode | null = null;
+  private mvInputGain: GainNode | null = null;
+  private mvSourceMap = new WeakMap<HTMLVideoElement, MediaElementAudioSourceNode>();
   private vocalGainNode: GainNode | null = null;
   private instrumentalGainNode: GainNode | null = null;
   private vocalAnalyser: AnalyserNode | null = null;
@@ -149,6 +152,12 @@ class LuminaAudioEngine {
 
     this.stemTimeBuffer = new Uint8Array(new ArrayBuffer(this.vocalAnalyser.fftSize));
 
+    this.songMixGain = ctx.createGain();
+    this.songMixGain.gain.value = 1;
+
+    this.mvInputGain = ctx.createGain();
+    this.mvInputGain.gain.value = 0;
+
     this.preGain = ctx.createGain();
     this.bypassGain = ctx.createGain();
     this.dspOutGain = ctx.createGain();
@@ -165,19 +174,23 @@ class LuminaAudioEngine {
     this.freqBuffer = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
     this.timeBuffer = new Uint8Array(new ArrayBuffer(this.analyser.fftSize));
 
-    // Original branch: Source -> originalInputGain -> preGain
+    // Original branch: Source -> originalInputGain -> songMixGain -> preGain
     this.sourceNode.connect(this.originalInputGain);
-    this.originalInputGain.connect(this.preGain);
+    this.originalInputGain.connect(this.songMixGain);
 
-    // AI Stems branch: vocalGain -> vocalAnalyser -> stemsMixGain -> preGain
-    //                  instrumentalGain -> instrumentalAnalyser -> stemsMixGain -> preGain
+    // AI Stems branch: vocalGain -> vocalAnalyser -> stemsMixGain -> songMixGain -> preGain
+    //                  instrumentalGain -> instrumentalAnalyser -> stemsMixGain -> songMixGain -> preGain
     this.vocalGainNode.connect(this.vocalAnalyser);
     this.vocalAnalyser.connect(this.stemsMixGain);
 
     this.instrumentalGainNode.connect(this.instrumentalAnalyser);
     this.instrumentalAnalyser.connect(this.stemsMixGain);
 
-    this.stemsMixGain.connect(this.preGain);
+    this.stemsMixGain.connect(this.songMixGain);
+    this.songMixGain.connect(this.preGain);
+
+    // MV Video audio branch -> mvInputGain -> preGain (shares exact EQ / Surround / Reverb / Limiter DSP!)
+    this.mvInputGain.connect(this.preGain);
 
     // Direct bypass branch -> Compressor
     this.preGain.connect(this.bypassGain);
@@ -514,6 +527,56 @@ class LuminaAudioEngine {
     ) {
       this.startStemSourcesAt(clamped);
     }
+  }
+
+  public canUseWebAudioForSrc(src: string): boolean {
+    if (!src) return false;
+    if (src.startsWith('blob:') || src.startsWith('data:')) return true;
+    try {
+      const parsed = new URL(src, window.location.href);
+      return parsed.origin === window.location.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Routes an HTMLVideoElement through the exact same Web Audio DSP chain
+   * (EQ, 3D Surround, Vocal/Bass/Treble, Reverb, Loudness Normalization) so MV audio
+   * matches the user's configured sound quality.
+   */
+  public attachMvVideoElement(video: HTMLVideoElement, src: string): boolean {
+    if (!this.canUseWebAudioForSrc(src)) {
+      return false;
+    }
+    try {
+      const ctx = this.ensureInitialized();
+      if (!this.mvInputGain) return false;
+      let node = this.mvSourceMap.get(video);
+      if (!node) {
+        node = ctx.createMediaElementSource(video);
+        node.connect(this.mvInputGain);
+        this.mvSourceMap.set(video, node);
+      }
+      video.muted = false;
+      video.volume = 1;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Smoothly crossfades song audio vs MV audio via Web Audio GainNodes without pops or abrupt gaps.
+   */
+  public setTheaterMixGains(songGain: number, mvGain: number, timeConstantSec = 0.03): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const tc = Math.max(0.008, timeConstantSec);
+    const s = Math.max(0, Math.min(1, Number.isFinite(songGain) ? songGain : 1));
+    const m = Math.max(0, Math.min(1, Number.isFinite(mvGain) ? mvGain : 0));
+    this.songMixGain?.gain.setTargetAtTime(s, now, tc);
+    this.mvInputGain?.gain.setTargetAtTime(m, now, tc);
   }
 
   public setVolume(volume: number, muted: boolean): void {
